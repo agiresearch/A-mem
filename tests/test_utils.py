@@ -1,6 +1,6 @@
 """Test utilities for the memory system."""
 from typing import List
-from llm_controller import BaseLLMController
+from agentic_memory.llm_controller import BaseLLMController
 
 class MockLLMController(BaseLLMController):
     """Mock LLM controller for testing"""

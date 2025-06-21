@@ -55,29 +55,23 @@ Empirical experiments conducted on six foundation models demonstrate superior pe
 1. Clone the repository:
 ```bash
 git clone https://github.com/agiresearch/A-mem.git
-cd AgenticMemory
+cd A-mem
 ```
 
 2. Install dependencies:
-Option 1: Using venv (Python virtual environment)
+Create and activate a virtual environment (recommended):
 ```bash
-# Create and activate virtual environment
 python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-.venv\Scripts\activate     # Windows
-
-# Install dependencies
-pip install -r requirements.txt
+source .venv/bin/activate  # On Windows, use: .venv\Scripts\activate
 ```
 
-Option 2: Using Conda
+Install the package:
 ```bash
-# Create and activate conda environment
-conda create -n myenv python=3.9
-conda activate myenv
-
-# Install dependencies
-pip install -r requirements.txt
+pip install .
+```
+For development, you can install it in editable mode:
+```bash
+pip install -e .
 ```
 
 3. Usage Examples 💡
@@ -85,7 +79,7 @@ pip install -r requirements.txt
 Here's how to use the Agentic Memory system for basic operations:
 
 ```python
-from memory_system import AgenticMemorySystem
+from agentic_memory.memory_system import AgenticMemorySystem
 
 # Initialize the memory system 🚀
 memory_system = AgenticMemorySystem(

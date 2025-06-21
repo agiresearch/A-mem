@@ -2,8 +2,8 @@ import keyword
 from typing import List, Dict, Optional, Any, Tuple
 import uuid
 from datetime import datetime
-from llm_controller import LLMController
-from retrievers import ChromaRetriever
+from .llm_controller import LLMController
+from .retrievers import ChromaRetriever
 import json
 import logging
 from rank_bm25 import BM25Okapi
