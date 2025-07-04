@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-memory"
+version = "0.0.1"
+description = "A library for implementing agentic memory in LLM applications."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "sentence-transformers>=2.2.2",
+    "chromadb>=0.4.22",
+    "rank_bm25>=0.2.2",
+    "nltk>=3.8.1",
+    "litellm>=1.16.11",
+    "numpy>=1.24.3",
+    "scikit-learn>=1.3.2",
+    "openai>=1.3.7",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agentic_memory*"]
+exclude = ["tests*"]
+
+[project.urls]
+"Homepage" = "https://github.com/agiresearch/A-mem"
+"Bug Tracker" = "https://github.com/agiresearch/A-mem/issues"

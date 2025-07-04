@@ -2,8 +2,8 @@ import keyword
 from typing import List, Dict, Optional, Any, Tuple
 import uuid
 from datetime import datetime
-from llm_controller import LLMController
-from retrievers import ChromaRetriever
+from .llm_controller import LLMController
+from .retrievers import ChromaRetriever
 import json
 import logging
 from rank_bm25 import BM25Okapi
@@ -44,7 +44,8 @@ class MemoryNote:
                  context: Optional[str] = None,
                  evolution_history: Optional[List] = None,
                  category: Optional[str] = None,
-                 tags: Optional[List[str]] = None):
+                 tags: Optional[List[str]] = None,
+                 llm_controller: Optional['LLMController'] = None):
         """Initialize a new memory note with its associated metadata.
         
         Args:
@@ -59,10 +60,22 @@ class MemoryNote:
             evolution_history (Optional[List]): Record of how the memory has evolved
             category (Optional[str]): Classification category
             tags (Optional[List[str]]): Additional classification tags
+            llm_controller (Optional[LLMController]): LLM controller for automatic attribute generation
         """
         # Core content and ID
         self.content = content
         self.id = id or str(uuid.uuid4())
+        
+        # Generate metadata using LLM if not provided and controller is available
+        if llm_controller and any(param is None for param in [keywords, context, category, tags]):
+            try:
+                analysis = self.analyze_content(content, llm_controller)
+                keywords = keywords or analysis.get("keywords", [])
+                context = context or analysis.get("context", "General")
+                tags = tags or analysis.get("tags", [])
+            except Exception as e:
+                logger.warning(f"Failed to analyze content with LLM: {e}")
+                # Fall back to defaults if LLM analysis fails
         
         # Semantic metadata
         self.keywords = keywords or []
@@ -79,6 +92,78 @@ class MemoryNote:
         # Usage and evolution data
         self.retrieval_count = retrieval_count or 0
         self.evolution_history = evolution_history or []
+        
+    @staticmethod
+    def analyze_content(content: str, llm_controller: 'LLMController') -> Dict:
+        """Analyze content to extract keywords, context, and other metadata using LLM.
+        
+        Args:
+            content (str): The text content to analyze
+            llm_controller (LLMController): LLM controller for analysis
+            
+        Returns:
+            Dict: Contains extracted metadata with keys:
+                - keywords: List[str]
+                - context: str
+                - tags: List[str]
+        """
+        prompt = """Generate a structured analysis of the following content by:
+            1. Identifying the most salient keywords (focus on nouns, verbs, and key concepts)
+            2. Extracting core themes and contextual elements
+            3. Creating relevant categorical tags
+
+            Format the response as a JSON object:
+            {
+                "keywords": [
+                    // several specific, distinct keywords that capture key concepts and terminology
+                    // Order from most to least important
+                    // Don't include keywords that are the name of the speaker or time
+                    // At least three keywords, but don't be too redundant.
+                ],
+                "context": 
+                    // one sentence summarizing:
+                    // - Main topic/domain
+                    // - Key arguments/points
+                    // - Intended audience/purpose
+                ,
+                "tags": [
+                    // several broad categories/themes for classification
+                    // Include domain, format, and type tags
+                    // At least three tags, but don't be too redundant.
+                ]
+            }
+
+            Content for analysis:
+            """ + content
+        
+        try:
+            response = llm_controller.llm.get_completion(prompt, response_format={"type": "json_schema", "json_schema": {
+                        "name": "response",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "keywords": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                },
+                                "context": {
+                                    "type": "string",
+                                },
+                                "tags": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    }})
+            return json.loads(response)
+        except Exception as e:
+            logger.error(f"Error analyzing content: {e}")
+            return {"keywords": [], "context": "General", "tags": []}
 
 class AgenticMemorySystem:
     """Core memory system that manages memory notes and their evolution.
@@ -156,86 +241,13 @@ class AgenticMemorySystem:
                                 }}
                                 '''
         
-    def analyze_content(self, content: str) -> Dict:            
-        """Analyze content using LLM to extract semantic metadata.
-        
-        Uses a language model to understand the content and extract:
-        - Keywords: Important terms and concepts
-        - Context: Overall domain or theme
-        - Tags: Classification categories
-        
-        Args:
-            content (str): The text content to analyze
-            
-        Returns:
-            Dict: Contains extracted metadata with keys:
-                - keywords: List[str]
-                - context: str
-                - tags: List[str]
-        """
-        prompt = """Generate a structured analysis of the following content by:
-            1. Identifying the most salient keywords (focus on nouns, verbs, and key concepts)
-            2. Extracting core themes and contextual elements
-            3. Creating relevant categorical tags
-
-            Format the response as a JSON object:
-            {
-                "keywords": [
-                    // several specific, distinct keywords that capture key concepts and terminology
-                    // Order from most to least important
-                    // Don't include keywords that are the name of the speaker or time
-                    // At least three keywords, but don't be too redundant.
-                ],
-                "context": 
-                    // one sentence summarizing:
-                    // - Main topic/domain
-                    // - Key arguments/points
-                    // - Intended audience/purpose
-                ,
-                "tags": [
-                    // several broad categories/themes for classification
-                    // Include domain, format, and type tags
-                    // At least three tags, but don't be too redundant.
-                ]
-            }
-
-            Content for analysis:
-            """ + content
-        try:
-            response = self.llm_controller.llm.get_completion(prompt, response_format={"type": "json_schema", "json_schema": {
-                        "name": "response",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "keywords": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string"
-                                    }
-                                },
-                                "context": {
-                                    "type": "string",
-                                },
-                                "tags": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string"
-                                    }
-                                }
-                            }
-                        }
-                    }})
-            return json.loads(response)
-        except Exception as e:
-            print(f"Error analyzing content: {e}")
-            return {"keywords": [], "context": "General", "tags": []}
 
     def add_note(self, content: str, time: str = None, **kwargs) -> str:
-        """Add a new memory note"""
-        # Create MemoryNote without llm_controller
+        """Add a new memory note with automatic LLM-based attribute generation"""
+        # Create MemoryNote with llm_controller for automatic attribute generation
         if time is not None:
             kwargs['timestamp'] = time
-        note = MemoryNote(content=content, **kwargs)
+        note = MemoryNote(content=content, llm_controller=self.llm_controller, **kwargs)
         
         # Update retriever with all documents
         evo_label, note = self.process_memory(note)
@@ -679,7 +691,14 @@ class AgenticMemorySystem:
                         if action == "strengthen":
                             suggest_connections = response_json["suggested_connections"]
                             new_tags = response_json["tags_to_update"]
-                            note.links.extend(suggest_connections)
+                            # Validate suggested connections - only add IDs that exist in memories
+                            valid_connections = [conn_id for conn_id in suggest_connections if conn_id in self.memories]
+                            if valid_connections:
+                                note.links.extend(valid_connections)
+                            # Log warning for invalid IDs
+                            invalid_ids = [conn_id for conn_id in suggest_connections if conn_id not in self.memories]
+                            if invalid_ids:
+                                logger.warning(f"Skipped invalid memory IDs in suggested connections: {invalid_ids}")
                             note.tags = new_tags
                         elif action == "update_neighbor":
                             new_context_neighborhood = response_json["new_context_neighborhood"]
