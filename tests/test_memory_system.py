@@ -13,10 +13,14 @@ class TestAgenticMemorySystem(unittest.TestCase):
         
     def test_create_memory(self):
         """Test creating a new memory with complete metadata."""
+        # First create some memories to link to
+        memory1_id = self.memory_system.add_note("Memory 1 for linking")
+        memory2_id = self.memory_system.add_note("Memory 2 for linking")
+        
         content = "Test memory content"
         tags = ["test", "memory"]
         keywords = ["test", "content"]
-        links = ["link1", "link2"]
+        links = [memory1_id, memory2_id]  # Use valid memory IDs
         context = "Test context"
         category = "Test category"
         timestamp = datetime.now().strftime("%Y%m%d%H%M")
@@ -42,6 +46,43 @@ class TestAgenticMemorySystem(unittest.TestCase):
         self.assertEqual(memory.context, context)
         self.assertEqual(memory.category, category)
         self.assertEqual(memory.timestamp, timestamp)
+        
+    def test_invalid_link_validation(self):
+        """Test that invalid memory links are filtered out."""
+        content = "Test memory with invalid links"
+        invalid_links = ["non_existent_1", "non_existent_2"]
+        
+        memory_id = self.memory_system.add_note(
+            content=content,
+            links=invalid_links
+        )
+        
+        # Verify memory was created
+        memory = self.memory_system.read(memory_id)
+        self.assertIsNotNone(memory)
+        
+        # Invalid links should be filtered out, resulting in empty list
+        self.assertEqual(memory.links, [])
+        
+    def test_mixed_link_validation(self):
+        """Test that only valid memory links are kept when mixed with invalid ones."""
+        # Create a valid memory to link to
+        valid_memory_id = self.memory_system.add_note("Valid memory for linking")
+        
+        content = "Test memory with mixed links"
+        mixed_links = ["invalid_id", valid_memory_id, "another_invalid"]
+        
+        memory_id = self.memory_system.add_note(
+            content=content,
+            links=mixed_links
+        )
+        
+        # Verify memory was created
+        memory = self.memory_system.read(memory_id)
+        self.assertIsNotNone(memory)
+        
+        # Only the valid memory ID should remain
+        self.assertEqual(memory.links, [valid_memory_id])
         
     def test_memory_metadata_persistence(self):
         """Test that memory metadata persists through ChromaDB storage and retrieval."""
