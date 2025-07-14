@@ -79,7 +79,14 @@ class MemoryNote:
         
         # Semantic metadata
         self.keywords = keywords or []
-        self.links = links or []
+        # Initialize links with validation
+        self.links = []
+        if links is not None:
+            # Validate link IDs - filter out invalid ones
+            if isinstance(links, list):
+                self.links = [link for link in links if isinstance(link, (str, int))]
+            else:
+                self.links = []
         self.context = context or "General"
         self.category = category or "Uncategorized"
         self.tags = tags or []
@@ -243,14 +250,21 @@ class AgenticMemorySystem:
         
 
     def add_note(self, content: str, time: str = None, **kwargs) -> str:
-        """Add a new memory note with automatic LLM-based attribute generation"""
+        """Add a new memory note with automatic LLM-based attribute generation and ID validation"""
         # Create MemoryNote with llm_controller for automatic attribute generation
         if time is not None:
             kwargs['timestamp'] = time
         note = MemoryNote(content=content, llm_controller=self.llm_controller, **kwargs)
         
-        # Update retriever with all documents
+        # Validate memory connections before processing
+        note = self.validate_memory_connections(note)
+        
+        # Process memory evolution and relationships
         evo_label, note = self.process_memory(note)
+        
+        # Validate connections again after processing in case new links were added
+        note = self.validate_memory_connections(note)
+        
         self.memories[note.id] = note
         
         # Add to ChromaDB with complete metadata
@@ -274,6 +288,26 @@ class AgenticMemorySystem:
             if self.evo_cnt % self.evo_threshold == 0:
                 self.consolidate_memories()
         return note.id
+    
+    def validate_memory_connections(self, memory_note: MemoryNote) -> MemoryNote:
+        """Validate and filter memory connections, removing non-existent IDs"""
+        if memory_note.links:
+            valid_links = []
+            invalid_links = []
+            
+            for link_id in memory_note.links:
+                if str(link_id) in self.memories:
+                    valid_links.append(link_id)
+                else:
+                    invalid_links.append(link_id)
+            
+            # Log warnings for invalid IDs
+            if invalid_links:
+                logger.warning(f"Filtered out non-existent memory IDs: {invalid_links}")
+            
+            memory_note.links = valid_links
+        
+        return memory_note
     
     def consolidate_memories(self):
         """Consolidate memories: update retriever with new documents"""
