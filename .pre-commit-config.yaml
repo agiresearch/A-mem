@@ -13,6 +13,3 @@ repos:
       - id: ruff-check
         types_or: [ python, pyi ]
         args: [ --fix ]
-      # formatter.
-      - id: ruff-format
-        types_or: [ python, pyi ]
