@@ -1,5 +1,6 @@
 import json
-from typing import Dict, List
+from pathlib import Path
+from typing import Dict, List, Optional
 import ast
 
 import chromadb
@@ -115,3 +116,66 @@ class ChromaRetriever:
                     metadata[key] = ast.literal_eval(value)
                 except Exception:
                     pass
+
+
+class PersistentChromaRetriever(ChromaRetriever):
+    """
+    Persistent ChromaDB client/retriever to facilitate sharing of memory from
+        multiple agents across sessions.
+    Simply changes how the client and collection are initialized. Other
+        functionality is inherited from ChromaRetriever.
+    """
+
+    def __init__(
+        self, 
+        directory: Optional[str] = None, 
+        collection_name: str = "memories", 
+        model_name: str = "all-MiniLM-L6-v2",
+        extend: bool = False
+    ):
+        """
+        Initialize persistent ChromaDB retriever.
+        
+        :param directory: Directory path for ChromaDB storage. Defaults to
+            '~/.chromadb' if None.
+        :collection_name: Name of the ChromaDB collection.
+        :model_name: SentenceTransformer model name for embeddings.
+        :extend: If True, allows initializes client and retriever from
+            collection if it exists. Raises error if False and collection
+            already exists. This prevents accidental overwriting of
+            existing collections.
+        """
+        if directory is None:
+            directory = Path.home() / '.chromadb'
+            directory.mkdir(parents=True, exist_ok=True)
+        elif isinstance(directory, str):
+            directory = Path(directory)
+
+        try:
+            directory.resolve(strict=True)
+        except FileNotFoundError:
+            directory.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise ValueError(f'Error accessing directory: {e}')        
+
+        # Use PersistentClient instead of regular Client
+        self.client = chromadb.PersistentClient(path=str(directory))
+        self.embedding_function = SentenceTransformerEmbeddingFunction(
+            model_name=model_name)
+        
+        existing_collections = [col.name for col in self.client.list_collections()]
+        
+        if collection_name in existing_collections:
+            if extend:
+                self.collection = self.client.get_collection(name=collection_name)
+            else:
+                raise ValueError(
+                    f"Collection '{collection_name}' already exists. "
+                    "Use extend=True to add to it."
+                )
+        else:
+            self.collection = self.client.get_or_create_collection(
+                name=collection_name,
+                embedding_function=self.embedding_function
+            )
+        self.collection_name = collection_name
