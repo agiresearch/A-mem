@@ -43,3 +43,9 @@ exclude = ["tests*"]
 [project.urls]
 "Homepage" = "https://github.com/agiresearch/A-mem"
 "Bug Tracker" = "https://github.com/agiresearch/A-mem/issues"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]
