@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 import ast
+import tempfile
+import atexit
 
 import chromadb
 from chromadb.config import Settings
@@ -11,6 +13,30 @@ from nltk.tokenize import word_tokenize
 
 def simple_tokenize(text):
     return word_tokenize(text)
+
+
+def _clone_collection(
+    src: chromadb.Collection,
+    dest: chromadb.Collection,
+    batch_size: int = 10
+):
+    """
+    Copies one ChromaDB collection to another. 
+    Enables duplicating of collections.
+    This seemed to be the only (best) way to do this as the official ChromaDB
+        docs also suggest this method:
+    """
+    existing_count = src.count()
+    for i in range(0, existing_count, batch_size):
+        batch = src.get(
+            include=["metadatas", "documents", "embeddings"],
+            limit=batch_size,
+            offset=i)
+        dest.add(
+            ids=batch["ids"],
+            documents=batch["documents"],
+            metadatas=batch["metadatas"],
+            embeddings=batch["embeddings"])
 
 
 class ChromaRetriever:
@@ -179,3 +205,99 @@ class PersistentChromaRetriever(ChromaRetriever):
                 embedding_function=self.embedding_function
             )
         self.collection_name = collection_name
+
+
+class CopiedChromaRetriever(PersistentChromaRetriever):
+    """
+    ChromaDB retriever that creates a copy of an existing collection
+        under to a temporary ChromaDB instance.
+    Useful for creating isolated copies of shared starting memory collections.
+    """
+
+    def __init__(
+        self,
+        directory: Optional[str] = None, 
+        collection_name: str = "memories", 
+        model_name: str = "all-MiniLM-L6-v2",
+        _dest_collection_name: Optional[str] = None,
+        _copy_batch_size: int = 10,
+    ):
+        """
+        Initialize the CopiedChromaDB retriever.
+
+        :param directory: Directory path for source ChromaDB storage. If None,
+            defaults to '~/.chromadb'.
+        :param collection_name: Name of the source ChromaDB collection to copy.
+        :param model_name: SentenceTransformer model name for embeddings.
+        :param _dest_collection_name: Optional name for the destination
+            collection. If None, defaults to '{collection_name}__clone'.
+            This parameter is marked as private as the class itself is meant
+            for single use and discard db that exists in a temporary so naming
+            the copied collection is most likely not needed. 
+        :param _copy_batch_size: Number of documents to copy per batch.
+            Shouldn't need to be changed normally. 
+        """
+
+        self.embedding_function = SentenceTransformerEmbeddingFunction(
+            model_name=model_name)
+
+        # ensure source is valid
+        if directory is None:
+            directory = Path.home() / '.chromadb'
+            directory.mkdir(parents=True, exist_ok=True)
+        elif isinstance(directory, str):
+            directory = Path(directory)
+        self._src_client = chromadb.PersistentClient(path=str(directory))
+
+        self._src = self._src_client.get_collection(name=collection_name)
+        existing_collections = [
+            col.name for col in self._src_client.list_collections()]
+        if collection_name not in existing_collections:
+            raise ValueError(
+                f"Collection '{collection_name}' to be copied does not exist."
+            )        
+
+        # use temp directory for destination collection
+        try:
+            self._tmpdir = tempfile.TemporaryDirectory(
+                prefix='chromadb_ephemeral_')
+            self._tmp_path = Path(self._tmpdir.name)
+            self._dst_client = chromadb.PersistentClient(
+                path=str(self._tmp_path)
+            )
+            self.collection_name = (
+                _dest_collection_name 
+                or f"{collection_name}__clone"
+            )
+            self.collection = self._dst_client.get_or_create_collection(
+                name=self.collection_name,
+                embedding_function=self.embedding_function,
+                metadata=self._src.metadata
+            )
+        except Exception as e:
+            raise ValueError(f"Error creating temporary ChromaDB: {e}")
+        
+        try:
+            _clone_collection(
+                src=self._src,
+                dest=self.collection,
+                batch_size=_copy_batch_size,
+            )
+        except Exception as e:
+            raise ValueError(f"Error cloning ChromaDB collection: {e}")
+        
+        atexit.register(self.close)
+
+    def close(self):
+        """Cleanup temporary directory."""
+        try:
+            self._dst_client.delete_collection(self.collection_name)
+        except Exception:
+            pass
+        try:
+            self._tmpdir.cleanup()
+        except Exception:
+            pass
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
