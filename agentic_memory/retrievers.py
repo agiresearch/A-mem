@@ -7,7 +7,7 @@ import atexit
 
 import chromadb
 from chromadb.config import Settings
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction, OpenAIEmbeddingFunction
 from nltk.tokenize import word_tokenize
 
 
@@ -53,9 +53,14 @@ class ChromaRetriever:
             collection_name: Name of the ChromaDB collection
         """
         self.client = chromadb.Client(Settings(allow_reset=True))
-        self.embedding_function = SentenceTransformerEmbeddingFunction(
-            model_name=model_name
-        )
+        if model_name.startswith("text-embedding-"):
+            self.embedding_function = OpenAIEmbeddingFunction(
+                model_name=model_name
+            )
+        else:
+            self.embedding_function = SentenceTransformerEmbeddingFunction(
+                model_name=model_name
+            )
         self.collection = self.client.get_or_create_collection(
             name=collection_name, embedding_function=self.embedding_function
         )
@@ -186,8 +191,14 @@ class PersistentChromaRetriever(ChromaRetriever):
 
         # Use PersistentClient instead of regular Client
         self.client = chromadb.PersistentClient(path=str(directory))
-        self.embedding_function = SentenceTransformerEmbeddingFunction(
-            model_name=model_name)
+        if model_name.startswith("text-embedding-"):
+            self.embedding_function = OpenAIEmbeddingFunction(
+                model_name=model_name
+            )
+        else:
+            self.embedding_function = SentenceTransformerEmbeddingFunction(
+                model_name=model_name
+            )
         
         existing_collections = [col.name for col in self.client.list_collections()]
         
@@ -238,8 +249,14 @@ class CopiedChromaRetriever(PersistentChromaRetriever):
             Shouldn't need to be changed normally. 
         """
 
-        self.embedding_function = SentenceTransformerEmbeddingFunction(
-            model_name=model_name)
+        if model_name.startswith("text-embedding-"):
+            self.embedding_function = OpenAIEmbeddingFunction(
+                model_name=model_name
+            )
+        else:
+            self.embedding_function = SentenceTransformerEmbeddingFunction(
+                model_name=model_name
+            )
 
         # ensure source is valid
         if directory is None:
