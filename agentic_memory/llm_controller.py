@@ -69,19 +69,16 @@ class OllamaController(BaseLLMController):
         return result
 
     def get_completion(self, prompt: str, response_format: dict, temperature: float = 0.7) -> str:
-        try:
-            response = completion(
-                model="ollama_chat/{}".format(self.model),
-                messages=[
-                    {"role": "system", "content": "You must respond with a JSON object."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format=response_format,
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            empty_response = self._generate_empty_response(response_format)
-            return json.dumps(empty_response)
+        # Allow exceptions (like ConnectionError) to bubble up for better debugging
+        response = completion(
+            model="ollama_chat/{}".format(self.model),
+            messages=[
+                {"role": "system", "content": "You must respond with a JSON object."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format=response_format,
+        )
+        return response.choices[0].message.content
 
 class LLMController:
     """LLM-based controller for memory metadata generation"""
