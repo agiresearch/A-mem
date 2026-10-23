@@ -264,8 +264,8 @@ class AgenticMemorySystem:
         return note.id
     
     def consolidate_memories(self):
-        """Consolidate memories: update retriever with new documents"""
-        # Reset ChromaDB collection
+        """Refresh retriever entries from the current in-memory notes."""
+        # Reuse the collection, but replace each ID so changed metadata is persisted.
         self.retriever = ChromaRetriever(collection_name="memories",model_name=self.model_name)
         
         # Re-add all memory documents with their complete metadata
@@ -283,6 +283,7 @@ class AgenticMemorySystem:
                 "category": memory.category,
                 "tags": memory.tags
             }
+            self.retriever.delete_document(memory.id)
             self.retriever.add_document(memory.content, metadata, memory.id)
     
     def find_related_memories(self, query: str, k: int = 5) -> Tuple[str, List[int]]:
