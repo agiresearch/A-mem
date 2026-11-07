@@ -145,6 +145,8 @@ class AgenticMemorySystem:
                                 Tags should be determined by the content of these characteristic of these memories, which can be used to retrieve them later and categorize them.
                                 Note that the length of new_tags_neighborhood must equal the number of input neighbors, and the length of new_context_neighborhood must equal the number of input neighbors.
                                 The number of neighbors is {neighbor_number}.
+                                Use the displayed memory id values for suggested_connections,
+                                not the memory index values.
                                 Return your decision in JSON format with the following structure:
                                 {{
                                     "should_evolve": True or False,
@@ -285,8 +287,8 @@ class AgenticMemorySystem:
             }
             self.retriever.add_document(memory.content, metadata, memory.id)
     
-    def find_related_memories(self, query: str, k: int = 5) -> Tuple[str, List[int]]:
-        """Find related memories using ChromaDB retrieval"""
+    def find_related_memories(self, query: str, k: int = 5) -> Tuple[str, List[str]]:
+        """Return formatted neighbors and their memory IDs in retrieval order."""
         if not self.memories:
             return "", []
             
@@ -296,7 +298,7 @@ class AgenticMemorySystem:
             
             # Convert to list of memories
             memory_str = ""
-            indices = []
+            neighbor_ids = []
             
             if 'ids' in results and results['ids'] and len(results['ids']) > 0 and len(results['ids'][0]) > 0:
                 for i, doc_id in enumerate(results['ids'][0]):
@@ -304,10 +306,17 @@ class AgenticMemorySystem:
                     if i < len(results['metadatas'][0]):
                         metadata = results['metadatas'][0][i]
                         # Format memory string
-                        memory_str += f"memory index:{i}\ttalk start time:{metadata.get('timestamp', '')}\tmemory content: {metadata.get('content', '')}\tmemory context: {metadata.get('context', '')}\tmemory keywords: {str(metadata.get('keywords', []))}\tmemory tags: {str(metadata.get('tags', []))}\n"
-                        indices.append(i)
+                        memory_str += (
+                            f"memory index:{i}\tmemory id:{doc_id}\t"
+                            f"talk start time:{metadata.get('timestamp', '')}\t"
+                            f"memory content: {metadata.get('content', '')}\t"
+                            f"memory context: {metadata.get('context', '')}\t"
+                            f"memory keywords: {str(metadata.get('keywords', []))}\t"
+                            f"memory tags: {str(metadata.get('tags', []))}\n"
+                        )
+                        neighbor_ids.append(doc_id)
                     
-            return memory_str, indices
+            return memory_str, neighbor_ids
         except Exception as e:
             logger.error(f"Error in find_related_memories: {str(e)}")
             return "", []
@@ -602,8 +611,8 @@ class AgenticMemorySystem:
             
         try:
             # Get nearest neighbors
-            neighbors_text, indices = self.find_related_memories(note.content, k=5)
-            if not neighbors_text or not indices:
+            neighbors_text, neighbor_ids = self.find_related_memories(note.content, k=5)
+            if not neighbors_text or not neighbor_ids:
                 return False, note
                 
             # Format neighbors for LLM - in this case, neighbors_text is already formatted
@@ -614,7 +623,7 @@ class AgenticMemorySystem:
                 context=note.context,
                 keywords=note.keywords,
                 nearest_neighbors_memories=neighbors_text,
-                neighbor_number=len(indices)
+                neighbor_number=len(neighbor_ids)
             )
             
             try:
@@ -684,36 +693,23 @@ class AgenticMemorySystem:
                         elif action == "update_neighbor":
                             new_context_neighborhood = response_json["new_context_neighborhood"]
                             new_tags_neighborhood = response_json["new_tags_neighborhood"]
-                            noteslist = list(self.memories.values())
-                            notes_id = list(self.memories.keys())
                             
-                            for i in range(min(len(indices), len(new_tags_neighborhood))):
-                                # Skip if we don't have enough neighbors
-                                if i >= len(indices):
+                            for i, (neighbor_id, tag) in enumerate(
+                                zip(neighbor_ids, new_tags_neighborhood)
+                            ):
+                                target_note = self.memories.get(neighbor_id)
+                                if target_note is None:
+                                    logger.warning(
+                                        "Skipping unavailable neighbor memory %s", neighbor_id
+                                    )
                                     continue
-                                    
-                                tag = new_tags_neighborhood[i]
                                 if i < len(new_context_neighborhood):
                                     context = new_context_neighborhood[i]
                                 else:
-                                    # Since indices are just numbers now, we need to find the memory
-                                    # In memory list using its index number
-                                    if i < len(noteslist):
-                                        context = noteslist[i].context
-                                    else:
-                                        continue
-                                        
-                                # Get index from the indices list
-                                if i < len(indices):
-                                    memorytmp_idx = indices[i]
-                                    # Make sure the index is valid
-                                    if memorytmp_idx < len(noteslist):
-                                        notetmp = noteslist[memorytmp_idx]
-                                        notetmp.tags = tag
-                                        notetmp.context = context
-                                        # Make sure the index is valid
-                                        if memorytmp_idx < len(notes_id):
-                                            self.memories[notes_id[memorytmp_idx]] = notetmp
+                                    context = target_note.context
+
+                                target_note.tags = tag
+                                target_note.context = context
                                 
                 return should_evolve, note
                 
